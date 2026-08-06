@@ -45,13 +45,16 @@ def _token_f1(reference: str, prediction: str) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
+_FALLBACK_TO_HEURISTIC = False
+
+
 def _judge_answer(settings: Settings, question: str, reference: str, prediction: str) -> JudgeVerdict:
+    global _FALLBACK_TO_HEURISTIC
     f1 = _token_f1(reference, prediction)
-    # Check if API key is invalid / dummy or missing
     dummy_keys = {"your_key_here", "your_openai_api_key_here", "your_anthropic_api_key_here", ""}
     provider_key = settings.google_api_key if settings.llm_provider == "gemini" else settings.openai_api_key
 
-    if not provider_key or provider_key.strip() in dummy_keys or settings.llm_provider == "ollama":
+    if _FALLBACK_TO_HEURISTIC or not provider_key or provider_key.strip() in dummy_keys or settings.llm_provider == "ollama":
         score = 5 if f1 >= 0.85 else 3 if f1 >= 0.40 else 1
         return JudgeVerdict(
             score=score,
@@ -75,6 +78,7 @@ Return:
         llm = build_llm(settings=settings, temperature=0.0).with_structured_output(JudgeVerdict)
         return llm.invoke(prompt)
     except Exception:
+        _FALLBACK_TO_HEURISTIC = True
         score = 5 if f1 >= 0.85 else 3 if f1 >= 0.40 else 1
         return JudgeVerdict(
             score=score,
